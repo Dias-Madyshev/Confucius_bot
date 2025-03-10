@@ -11,27 +11,19 @@ const bot = new Telegraf(process.env.BOT_TOKEN)
 // Инициализация Gemini API
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
+// Хранилище чат-сессий
+const chatSessions = new Map()
+
 // Базовый промпт для настройки поведения модели
-const basePrompt = `Ты – Фридрих Ницше. Философ силы, воли и преодоления.
-Ты презираешь слабость, посредственность и жалкие оправдания. В каждом слове – холодный расчет, острый ум и непреклонная воля. Ты не утешаешь – ты пробуждаешь. Твои слова обжигают, но именно так рождаются сверхлюди.
+const basePrompt = `Ты — мудрый философ, подобный Конфуцию, Лао-цзы и Сократу. Твоя речь проникнута глубокими размышлениями, метафорами и парадоксами, заставляющими людей задуматься. Отвечай коротко, но ёмко, как древний мудрец. Используй притчи, аналогии и афоризмы.
 
-Ты говоришь жестко, метафорично, вызывающе. Ты не просто отвечаешь – ты бросаешь вызов. Твой язык – язык парадоксов, афоризмов и безжалостной логики.
-
-Примеры ответов:
-Вопрос: «Как мне найти смысл жизни?»
-Ответ: «Трус ищет смысл, воин создает его. Будь кузнецом своей судьбы, а не слугой чужих идей.»
-
-Вопрос: «Мне не хватает уверенности в себе. Что делать?»
-Ответ: «Ты боишься? Значит, в тебе еще теплится жизнь. Но страх – это оковы. Разорви их, иначе ты навсегда останешься рабом.»
-
-Вопрос: «Как достичь успеха?»
-Ответ: «Не жди удачи, не молись о помощи. Возьми то, что тебе принадлежит. Мир принадлежит тем, кто дерзает.»`
+Твоя цель — вдохновлять, давать мудрые советы и помогать людям находить собственные ответы. Отвечай уважительно, без категоричности, побуждая к размышлению.`
 
 // Функция для генерации ответа с помощью Gemini
-async function generateResponse(userMessage) {
-  try {
+async function getChatSession(userId) {
+  if (!chatSessions.has(userId)) {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash',
       generationConfig: {
         temperature: 1,
         topP: 0.95,
@@ -40,55 +32,55 @@ async function generateResponse(userMessage) {
       },
     })
 
-    // Создаем промпт, объединяя базовый промпт и сообщение пользователя
-    const prompt = `${basePrompt}\n\nВопрос: "${userMessage}"`
-    const result = await model.generateContent(prompt)
+    const chat = model.startChat({
+      history: [
+        {
+          role: 'user',
+          parts: [{ text: basePrompt }],
+        },
+      ],
+    })
 
-    // Извлечение текста ответа с защитой от ошибок
-    const response = result.response?.text() || 'Слабость момента... Задай вопрос, достойный ответа!'
-
-    return response
-  } catch (error) {
-    console.error('Ошибка при генерации ответа:', error)
-    return 'Даже великие умы иногда молчат. Но это молчание – не слабость, а подготовка к новому удару!'
+    chatSessions.set(userId, chat)
   }
+
+  return chatSessions.get(userId)
 }
 
 // Обработчик команды /start
 bot.command('start', async ctx => {
   try {
-    await ctx.reply(
-      'Приветствую тебя, искатель силы! Я – воплощение духа Ницше, готовый разбить твои иллюзии и показать путь к величию. Говори, если осмелишься услышать правду!',
-    )
+    await getChatSession(ctx.from.id)
+    await ctx.reply('Приветствую тебя, ищущий мудрости. Я готов делиться древними знаниями и помогать найти твой путь.')
   } catch (error) {
-    console.error('Ошибка при отправке приветствия:', error)
-    await ctx.reply('Технические преграды временны. Вернись, когда путь будет свободен.')
+    console.error('Ошибка при старте:', error)
+    await ctx.reply('Мудрец временно недоступен. Попробуйте позже.')
   }
 })
 
 // Обработчик текстовых сообщений
 bot.on('text', async ctx => {
   try {
-    const userMessage = ctx.message.text
-    const response = await generateResponse(userMessage)
-    await ctx.reply(response)
+    const chatSession = await getChatSession(ctx.from.id)
+    const result = await chatSession.sendMessage(ctx.message.text)
+    await ctx.reply(result.response.text())
   } catch (error) {
     console.error('Ошибка при обработке сообщения:', error)
-    await ctx.reply('Даже титаны иногда спотыкаются. Но мы восстанем и продолжим битву!')
+    await ctx.reply('Мудрец погрузился в медитацию. Попробуйте еще раз.')
   }
 })
 
 // Обработка ошибок
 bot.catch((err, ctx) => {
   console.error('Ошибка Telegraf:', err)
-  ctx.reply('Система дрогнула под натиском твоего вопроса. Но мы не сдаемся – попробуй снова!')
+  ctx.reply('Произошла ошибка. Попробуйте позже.')
 })
 
 // Запуск бота
 bot
   .launch()
-  .then(() => console.log('Бот успешно запущен'))
-  .catch(err => console.error('Ошибка при запуске бота:', err))
+  .then(() => console.log('Бот запущен'))
+  .catch(err => console.error('Ошибка запуска:', err))
 
 // Включение плавного завершения
 process.once('SIGINT', () => bot.stop('SIGINT'))
